@@ -137,6 +137,15 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 .free { display: flex; gap: 8px; padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); flex: none; }
 .free input { flex: 1; min-width: 0; height: 42px; border: 0; border-radius: 10px; padding: 0 12px; background: var(--bg); font-family: var(--font-tree); font-size: 18px; }
 .go { height: 42px; padding: 0 16px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 600; flex: none; }
+.branching .seg2, .branching .free { display: none; }
+.branching .sbody { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+.brrow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.brbtn { height: 84px; border-radius: 14px; background: var(--accent-soft); color: var(--accent); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 600; }
+.brbtn svg { width: 30px; height: 30px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.brbtn .cap { color: inherit; }
+.brbtn:active { filter: brightness(.95); }
+.brlinks { display: flex; justify-content: center; gap: 20px; margin-top: 12px; }
+.brlinks button { font-size: 13px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; padding: 6px 2px; }
 .tip { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
 
 #psheet { top: 6%; }

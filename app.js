@@ -22,7 +22,7 @@
 
   // ---------- state ----------
   var uid = 0;
-  var S = { mode: "book", idx: 0, own: "", tree: null, sel: null, undo: [], redo: [], queue: [], heads: [], wrong: null, manual: false, view: { k: 1, tx: 0, ty: 0 } };
+  var S = { mode: "book", idx: 0, own: "", tree: null, sel: null, undo: [], redo: [], wrong: null, manual: false, view: { k: 1, tx: 0, ty: 0 } };
 
   function node(l, w) { return { id: ++uid, l: l || "", c: [], w: !!w }; }
   function walk(n, f, parent) { f(n, parent); n.c.forEach(function (k) { walk(k, f, n); }); }
@@ -56,7 +56,7 @@
     var oldIds = {}; (function rec(n, p) { oldIds[p] = n.id; n.c.forEach(function (k, i) { rec(k, p + "." + i); }); })(S.tree, "r");
     var o = JSON.parse(snap); S.tree = rehydrate(o.t);
     (function rec(n, p) { if (oldIds[p]) n.id = oldIds[p]; n.c.forEach(function (k, i) { rec(k, p + "." + i); }); })(S.tree, "r");
-    S.sel = byPath(o.path).id; S.queue = []; S.heads = [];
+    S.sel = byPath(o.path).id;
   }
   function changed() { S.wrong = null; hideBanner(); save(); render(); }
 
@@ -233,17 +233,16 @@
 
   // ---------- edits ----------
   function select(id, openSheet) {
-    S.sel = id; S.queue = []; S.heads = [];
-    render(); if (openSheet) showLabelSheet(); else { if (!$("lsheet").hidden) fillSheet(); ensureVisible(); }
+    S.sel = id;
+    render(); if (openSheet || !$("lsheet").hidden) showLabelSheet(); else ensureVisible();
   }
   function add(count) {
     var n = find(S.sel); if (!n) return;
     commit(); buzz();
     var made = [];
     for (var i = 0; i < count; i++) { var k = node(""); n.c.push(k); made.push(k.id); }
-    S.queue = made.slice(1); S.heads = [];
     S.sel = made[0];
-    changed(); showLabelSheet();
+    changed(); tab = "cat"; openSheet();
   }
   function wrap() {
     var n = find(S.sel); if (!n || n.w) return;
@@ -251,7 +250,7 @@
     var p = parentOf(n.id), np = node(n.l);
     np.c.push(n);
     if (p) p.c[p.c.indexOf(n)] = np; else S.tree = np;
-    S.sel = np.id; S.queue = []; S.heads = [];
+    S.sel = np.id;
     changed(); autoView();
   }
   function swap() {
@@ -264,34 +263,43 @@
     var n = find(S.sel); if (!n) return;
     var p = parentOf(n.id);
     if (!p) {
-      askConfirm("수형도 전체를 지우고 처음부터 그릴까요?", function () { commit(); S.tree = node(""); S.sel = S.tree.id; S.queue = []; hideLabelSheet(); changed(); fit(); });
+      askConfirm("수형도 전체를 지우고 처음부터 그릴까요?", function () { commit(); S.tree = node(""); S.sel = S.tree.id; hideLabelSheet(); changed(); fit(); });
       return;
     }
     commit(); buzz();
     p.c.splice(p.c.indexOf(n), 1);
-    S.sel = p.id; S.queue = []; S.heads = [];
+    S.sel = p.id;
     changed(); autoView();
   }
-  function nextStep() {
-    // queue of freshly made siblings, then heads that still need a word
-    while (S.queue.length) { var q = find(S.queue.shift()); if (q && !q.l) return { id: q.id, tab: "cat" }; }
-    while (S.heads.length) { var h = find(S.heads.shift()); if (h && isHead(h.l) && !h.c.length) return { id: h.id, tab: "word" }; }
+  // what a node still needs: a label, branches, or a word under a head
+  function need(n) {
+    if (n.w) return null;
+    if (!n.l) return "cat";
+    if (n.c.length) return null;
+    return isHead(n.l) ? "word" : "branch";
+  }
+  function nextPending(fromId) {
+    // pre-order (left branch first), starting at fromId and wrapping around
+    var order = []; walk(S.tree, function (n) { order.push(n); });
+    var i0 = Math.max(0, order.findIndex(function (n) { return n.id === fromId; }));
+    for (var i = 0; i < order.length; i++) { var n = order[(i0 + i) % order.length], t = need(n); if (t) return { id: n.id, tab: t }; }
     return null;
+  }
+  function advance(fromId) {
+    var nx = nextPending(fromId);
+    if (!nx) { changed(); hideLabelSheet(); return; }
+    S.sel = nx.id; tab = nx.tab; changed(); openSheet();
   }
   function setLabel(text, asWord) {
     var n = find(S.sel); if (!n) return;
     text = text.trim(); if (!text) return;
+    var wasPending = !!need(n);
     commit(); buzz();
     if (asWord && !n.w) {
       var wk = n.c.filter(function (k) { return k.w; })[0];
       if (wk) wk.l = text; else if (!n.c.length) n.c.push(node(text, true)); else { S.undo.pop(); return; }
     } else { n.l = text; if (!asWord) n.w = false; }
-    if (!asWord && isHead(text) && !n.c.length) {
-      if (S.queue.length) S.heads.push(n.id);
-      else { changed(); tab = "word"; fillSheet(); autoView(); return; }
-    }
-    var nx = nextStep();
-    if (nx) { S.sel = nx.id; changed(); tab = nx.tab; fillSheet(); autoView(); }
+    if (wasPending || need(n)) advance(n.id);
     else { changed(); hideLabelSheet(); }
   }
   function undo() { if (!S.undo.length) return; S.redo.push(snapshot()); restore(S.undo.pop()); changed(); autoView(); }
@@ -307,10 +315,11 @@
   var tab = "cat";
   function showLabelSheet() {
     var n = find(S.sel); if (!n) return;
-    tab = (n.w || (isHead(n.l) && !n.c.length)) ? "word" : "cat";
-    $("lsheet").hidden = false; fillSheet(); requestAnimationFrame(autoView);
+    tab = need(n) === "branch" ? "branch" : (n.w || need(n) === "word") ? "word" : "cat";
+    openSheet();
   }
-  function hideLabelSheet() { var was = !$("lsheet").hidden; $("lsheet").hidden = true; S.queue = []; S.heads = []; if (was) autoView(); }
+  function openSheet() { $("lsheet").hidden = false; fillSheet(); requestAnimationFrame(autoView); }
+  function hideLabelSheet() { var was = !$("lsheet").hidden; $("lsheet").hidden = true; if (was) autoView(); }
   function lb(txt, cls, onClick) {
     var b = document.createElement("button"); b.className = "lb " + (cls || "");
     var s = split(txt); b.appendChild(document.createTextNode(s[0]));
@@ -345,8 +354,27 @@
   function fillSheet() {
     var n = find(S.sel), body = $("lbody");
     if (!n) { hideLabelSheet(); return; }
+    var p = parentOf(n.id), br = tab === "branch";
+    $("lsheet").classList.toggle("branching", br);
+    if (br) {
+      $("ltitle").textContent = "가지 뻗기"; $("lsub").textContent = n.l + " 아래";
+      body.innerHTML = "";
+      var row = document.createElement("div"); row.className = "brrow"; body.appendChild(row);
+      [[1, "b1"], [2, "b2"]].forEach(function (b) {
+        var btn = document.createElement("button"); btn.className = "brbtn";
+        btn.innerHTML = $(b[1]).innerHTML;
+        btn.addEventListener("click", function () { add(b[0]); });
+        row.appendChild(btn);
+      });
+      var alt = document.createElement("div"); alt.className = "brlinks";
+      var relabel = document.createElement("button"); relabel.textContent = "라벨 바꾸기";
+      relabel.addEventListener("click", function () { tab = "cat"; fillSheet(); });
+      var asw = document.createElement("button"); asw.textContent = "바로 단어 붙이기";
+      asw.addEventListener("click", function () { tab = "word"; fillSheet(); });
+      alt.appendChild(relabel); alt.appendChild(asw); body.appendChild(alt);
+      return;
+    }
     $("t-cat").setAttribute("aria-pressed", tab === "cat"); $("t-word").setAttribute("aria-pressed", tab === "word");
-    var p = parentOf(n.id);
     $("ltitle").textContent = tab === "word" ? (n.w ? "단어 바꾸기" : "단어 붙이기") : (n.l ? "라벨 바꾸기" : "라벨 고르기");
     var sub = "";
     if (tab === "word") sub = !n.w && n.l ? n.l + " 아래" : "";
@@ -441,7 +469,7 @@
         ]],
         ["사용법", [
           "절점을 탭하면 선택됩니다. 선택한 절점을 한 번 더 탭하거나 아래 라벨 버튼을 누르면 라벨을 고릅니다.",
-          "한 가닥·두 가닥을 누르면 새 절점의 라벨을 바로 묻습니다. 두 가닥은 왼쪽부터 차례로 묻고, D·V·T 같은 말단 범주에는 이어서 단어를 묻습니다.",
+          "한 가닥·두 가닥을 누르면 새 절점의 라벨을 바로 묻습니다. 라벨을 고르면 그 절점에서 바로 가지를 뻗고, 언제나 왼쪽 가지부터 내려갑니다. D·V·T 같은 말단 범주에는 단어를 묻고, 단어를 붙이면 남은 절점 중 가장 왼쪽 것으로 넘어갑니다.",
           "부가어: 위에 끼우기로 V′ 위에 V′를 하나 더 만든 뒤 한 가닥으로 부가어 자리를 만듭니다. 왼쪽 부가어면 좌우 바꾸기를 누릅니다.",
           "아래첨자는 밑줄로 씁니다: t_1, DP_1, give_2. 채점은 아래첨자 번호를 보지 않습니다.",
           "한 손가락으로 끌면 이동, 두 손가락으로 확대합니다. 오른쪽 아래 버튼은 화면 맞춤입니다.",
@@ -497,7 +525,7 @@
     S.tree = null;
     if (saved) { try { S.tree = rehydrate(JSON.parse(saved)); } catch (e) {} }
     if (!S.tree) S.tree = node("");
-    S.sel = S.tree.id; S.undo = []; S.redo = []; S.queue = []; S.heads = []; S.wrong = null;
+    S.sel = S.tree.id; S.undo = []; S.redo = []; S.wrong = null;
     hideBanner(); $("lsheet").hidden = true;
     var p = P[S.idx], book = S.mode === "book";
     $("sent").textContent = curSentence();
