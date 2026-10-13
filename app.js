@@ -192,19 +192,36 @@
     })(t0);
   }
   function stopView() { if (vAnim) { cancelAnimationFrame(vAnim); vAnim = null; } }
-  function sheetH() { var h = 0; ["lsheet"].forEach(function (id) { var s = $(id); if (!s.hidden) h = s.getBoundingClientRect().height; }); return h; }
-  function fitTarget() {
+  function sheetH() { var l = $("lsheet"); return l.hidden ? 0 : l.getBoundingClientRect().height; }
+  function visibleBox() {
     var r = svg.getBoundingClientRect();
-    var top = $("banner").hidden ? 60 : 72, bottom = Math.max(sheetH(), 60) + 8;
-    var vh = Math.max(120, r.height - top - bottom), vw = r.width - 32;
-    var k = Math.max(0.28, Math.min(vw / size.w, vh / size.h, 1.15));
-    return { k: k, tx: (r.width - size.w * k) / 2, ty: top + Math.max(0, (vh - size.h * k) / 2) - 8 };
+    var bn = $("banner"), top = bn.hidden ? 54 : bn.getBoundingClientRect().bottom - r.top + 12, bottom = sheetH() + 16;
+    return { w: r.width, h: r.height, top: top, vh: Math.max(100, r.height - top - bottom), vw: r.width - 32 };
   }
-  function fit(instant) {
+  function fitTarget(all) {
+    var b = visibleBox();
+    var k = Math.min(b.vw / size.w, b.vh / size.h, 1.15);
+    var n = find(S.sel), MINK = $("lsheet").hidden ? 0.5 : 0.62; // below this, labels are too small to read
+
+    if (all || k >= MINK || !n || n._x === undefined) {
+      k = Math.max(all ? 0.15 : MINK, k);
+      return { k: k, tx: (b.w - size.w * k) / 2, ty: b.top + Math.max(0, (b.vh - size.h * k) / 2) };
+    }
+    // tree too big to read whole: follow the selected node at a readable size
+    k = MINK;
+    var tw = size.w * k, th = size.h * k, tx, ty;
+    if (tw <= b.vw) tx = (b.w - tw) / 2;
+    else tx = Math.min(16, Math.max(b.w - 16 - tw, b.w / 2 - n._x * k));
+    if (th <= b.vh) ty = b.top + (b.vh - th) / 2;
+    else ty = Math.min(b.top, Math.max(b.top + b.vh - th, b.top + b.vh * 0.4 - n._y * k));
+    return { k: k, tx: tx, ty: ty };
+  }
+  function fit(instant, all) {
     if (!svg.getBoundingClientRect().width) return;
-    S.manual = false; var t = fitTarget();
+    S.manual = false; var t = fitTarget(all);
     if (instant) { stopView(); S.view = t; applyView(); } else tweenView(t);
   }
+  function placeFloat() {}
   function ensureVisible() {
     var n = find(S.sel); if (!n || n._x === undefined) return;
     var r = svg.getBoundingClientRect(), v = { k: S.view.k, tx: S.view.tx, ty: S.view.ty };
@@ -213,7 +230,7 @@
     if (sy < 70) v.ty += 70 - sy; else if (sy > bottom) v.ty -= sy - bottom;
     if (v.tx !== S.view.tx || v.ty !== S.view.ty) tweenView(v);
   }
-  function autoView() { if (S.manual) ensureVisible(); else fit(); }
+  function autoView() { placeFloat(); if (S.manual) ensureVisible(); else fit(); }
 
   // ---------- tray ----------
   function updateTray() {
@@ -226,7 +243,7 @@
     var tgt = n && (n.c.length === 2 ? n : p);
     $("bswap").disabled = !(tgt && tgt.c.length === 2);
     $("bdel").disabled = !n || (!p && !n.l && !n.c.length);
-    $("bundo").disabled = !S.undo.length;
+    $("bundo").disabled = !S.undo.length; $("sundo").disabled = !S.undo.length;
     $("bredo").disabled = !S.redo.length;
     $("hint").hidden = !!(S.tree.l || S.tree.c.length);
   }
@@ -302,8 +319,8 @@
     if (wasPending || need(n)) advance(n.id);
     else { changed(); hideLabelSheet(); }
   }
-  function undo() { if (!S.undo.length) return; S.redo.push(snapshot()); restore(S.undo.pop()); changed(); autoView(); }
-  function redo() { if (!S.redo.length) return; S.undo.push(snapshot()); restore(S.redo.pop()); changed(); autoView(); }
+  function undo() { if (!S.undo.length) return; S.redo.push(snapshot()); restore(S.undo.pop()); changed(); if (!$("lsheet").hidden) showLabelSheet(); else autoView(); }
+  function redo() { if (!S.redo.length) return; S.undo.push(snapshot()); restore(S.redo.pop()); changed(); if (!$("lsheet").hidden) showLabelSheet(); else autoView(); }
   function nav(dir) {
     var n = find(S.sel); if (!n) return; var p = parentOf(n.id);
     if (dir === "up" && p) select(p.id);
@@ -318,8 +335,8 @@
     tab = need(n) === "branch" ? "branch" : (n.w || need(n) === "word") ? "word" : "cat";
     openSheet();
   }
-  function openSheet() { $("lsheet").hidden = false; fillSheet(); requestAnimationFrame(autoView); }
-  function hideLabelSheet() { var was = !$("lsheet").hidden; $("lsheet").hidden = true; if (was) autoView(); }
+  function openSheet() { $("lsheet").hidden = false; $("app").classList.add("editing"); fillSheet(); requestAnimationFrame(autoView); }
+  function hideLabelSheet() { var was = !$("lsheet").hidden; $("lsheet").hidden = true; $("app").classList.remove("editing"); if (was) requestAnimationFrame(autoView); }
   function lb(txt, cls, onClick) {
     var b = document.createElement("button"); b.className = "lb " + (cls || "");
     var s = split(txt); b.appendChild(document.createTextNode(s[0]));
@@ -357,7 +374,7 @@
     var p = parentOf(n.id), br = tab === "branch";
     $("lsheet").classList.toggle("branching", br);
     if (br) {
-      $("ltitle").textContent = "가지 뻗기"; $("lsub").textContent = n.l + " 아래";
+      $("ltitle").textContent = n.l + " 아래로 가지"; $("lsub").textContent = "";
       body.innerHTML = "";
       var row = document.createElement("div"); row.className = "brrow"; body.appendChild(row);
       [[1, "b1"], [2, "b2"]].forEach(function (b) {
@@ -375,7 +392,7 @@
       return;
     }
     $("t-cat").setAttribute("aria-pressed", tab === "cat"); $("t-word").setAttribute("aria-pressed", tab === "word");
-    $("ltitle").textContent = tab === "word" ? (n.w ? "단어 바꾸기" : "단어 붙이기") : (n.l ? "라벨 바꾸기" : "라벨 고르기");
+    $("ltitle").textContent = tab === "word" ? (n.w ? "단어 바꾸기" : "단어") : (n.l ? "라벨 바꾸기" : "라벨");
     var sub = "";
     if (tab === "word") sub = !n.w && n.l ? n.l + " 아래" : "";
     else sub = p ? (p.l ? p.l + " 아래" : "") : "맨 위 절점";
@@ -428,8 +445,8 @@
     else showBanner("bad", "정답과 다른 곳 " + best.n + "군데. 빨간 절점의 라벨이나 그 아래 가지 수를 확인하세요.");
     autoView();
   }
-  function showBanner(kind, text) { var b = $("banner"); b.className = "banner " + kind; $("bannertext").textContent = text; b.hidden = false; }
-  function hideBanner() { $("banner").hidden = true; }
+  function showBanner(kind, text) { var b = $("banner"); b.className = "banner " + kind; $("bannertext").textContent = text; b.hidden = false; $("app").classList.add("bannered"); }
+  function hideBanner() { $("banner").hidden = true; $("app").classList.remove("bannered"); }
 
   // ---------- modal ----------
   function openModal(title, build) { $("mtitle").textContent = title; var b = $("mbody"); b.innerHTML = ""; build(b); $("modal").hidden = false; b.scrollTop = 0; }
@@ -592,7 +609,7 @@
   on("blabel", showLabelSheet);
   on("b1", function () { add(1); }); on("b2", function () { add(2); });
   on("bwrap", wrap); on("bswap", swap); on("bdel", del); on("bundo", undo); on("bredo", redo);
-  on("bfit", function () { fit(); }); on("bcheck", check); on("bannerans", showAnswer); on("bannerx", hideBanner);
+  on("bfit", function () { fit(false, true); }); on("sundo", undo); on("bcheck", check); on("bannerans", showAnswer); on("bannerx", hideBanner);
   on("lclose", hideLabelSheet);
   on("t-cat", function () { tab = "cat"; fillSheet(); }); on("t-word", function () { tab = "word"; fillSheet(); });
   function applyFree() { var v = $("freein").value; if (v.trim()) setLabel(v, tab === "word"); }

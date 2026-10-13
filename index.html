@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Crimson+Pro:ital,wght@0,500;1,500&display=swap">
 <style>
-/* Layout: one-screen app. Two-line problem header, tree canvas with floating undo/fit, one-row tool tray in the thumb zone. */
+/* Layout: one-screen app. Two-line problem header, tree canvas with floating fit/redo, one-row tool tray in the thumb zone. */
 :root {
   --bg: #eef1f6;
   --panel: #ffffff;
@@ -36,15 +36,16 @@
   --accent: #7f9dff; --accent-ink: #0f1420; --accent-soft: #232f52; --bad: #ff7a6e; --bad-soft: #3a2124; --good: #5fd39a; --good-soft: #16342a;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.35); color-scheme: dark; }
 
-[hidden] { display: none !important; }
-html, body { height: 100%; }
 body { margin: 0; }
 .top { padding-top: calc(8px + env(safe-area-inset-top, 0px)) !important; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; overflow: hidden; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
 button, input { font: inherit; color: inherit; }
 button { cursor: pointer; border: 0; background: none; padding: 0; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-#app { height: 100%; display: flex; flex-direction: column; }
+#app { height: 100%; height: 100dvh; display: flex; flex-direction: column; }
+#app.editing .tray, #app.editing .float, #app.bannered .float { display: none; }
 
 /* header */
 .top { background: var(--panel); padding: 8px 16px 10px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 1px 0 var(--line); z-index: 2; }
@@ -83,11 +84,10 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 @keyframes pulse { 0% { opacity: .7; transform: scale(1); } 100% { opacity: 0; transform: scale(1.9); } }
 
 .float { position: absolute; display: flex; gap: 6px; }
-.float.tr { top: 12px; right: 12px; }
-.float.br { bottom: 12px; right: 12px; }
-.fbtn { width: 40px; height: 40px; border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); display: grid; place-items: center; color: var(--ink); }
+.float.tr { top: 10px; right: 10px; }
+.fbtn { width: 36px; height: 36px; border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); display: grid; place-items: center; color: var(--ink); }
 .fbtn svg { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.fbtn:disabled { color: var(--muted); opacity: .45; box-shadow: none; }
+.fbtn:disabled { display: none; }
 .fbtn:active:not(:disabled) { background: var(--accent-soft); }
 
 .banner { position: absolute; left: 12px; right: 12px; top: 12px; border-radius: 12px; padding: 10px 12px; font-size: 13.5px; line-height: 1.4; display: flex; align-items: center; gap: 10px; box-shadow: var(--shadow); animation: drop .2s ease-out; }
@@ -100,7 +100,7 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 .hint { position: absolute; left: 50%; transform: translateX(-50%); top: 16px; font-size: 13px; color: var(--muted); white-space: nowrap; pointer-events: none; }
 
 /* tray */
-.tray { background: var(--panel); box-shadow: 0 -1px 0 var(--line); padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; z-index: 2; }
+.tray { background: var(--panel); box-shadow: 0 -1px 0 var(--line); padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; z-index: 2; }
 .tool { height: 58px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11.5px; color: var(--ink); min-width: 0; }
 .tool svg { width: 23px; height: 23px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .tool .big { font-family: var(--font-tree); font-size: 21px; line-height: 23px; height: 23px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
@@ -116,11 +116,15 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 .grab { width: 36px; height: 4px; border-radius: 2px; background: var(--line); margin: 8px auto 2px; flex: none; }
 .shead { display: flex; align-items: center; gap: 8px; padding: 4px 16px 8px; }
 .shead h3 { margin: 0; font-size: 15px; font-weight: 600; }
-.shead .sub { font-size: 13px; color: var(--muted); }
-.shead .x { margin-left: auto; width: 32px; height: 32px; border-radius: 10px; font-size: 22px; line-height: 1; color: var(--muted); }
-#lsheet { max-height: 58%; }
-.seg2 { display: flex; margin: 0 16px 8px; padding: 3px; border-radius: 10px; background: var(--bg); flex: none; }
-.seg2 button { flex: 1; height: 32px; border-radius: 8px; font-size: 13.5px; color: var(--muted); }
+.shead .sub { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.shead h3 { white-space: nowrap; }
+.branching .shead #sundo { margin-left: auto; }
+.shead .x svg { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; display: block; margin: auto; }
+.shead .x:disabled { opacity: .3; }
+.shead .x { flex: none; width: 32px; height: 32px; border-radius: 10px; font-size: 22px; line-height: 1; color: var(--muted); }
+#lsheet { max-height: 55%; }
+.seg2 { display: flex; margin-left: auto; width: 128px; padding: 3px; border-radius: 10px; background: var(--bg); flex: none; }
+.seg2 button { flex: 1; height: 30px; border-radius: 8px; font-size: 13.5px; color: var(--muted); }
 .seg2 button[aria-pressed="true"] { background: var(--panel); color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(16,28,60,.12); }
 .sbody { overflow-y: auto; min-height: 0; padding: 0 16px 8px; display: flex; flex-direction: column; gap: 12px; }
 .gl { font-size: 11.5px; letter-spacing: .05em; color: var(--muted); margin-bottom: 6px; }
@@ -132,9 +136,9 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 .lb.plain { font-style: normal; }
 .lb.used { opacity: .35; }
 .lb sub { font-size: 12px; }
-.fam { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.fam { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .fam .lb { width: 100%; }
-.free { display: flex; gap: 8px; padding: 8px 16px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); flex: none; }
+.free { display: flex; gap: 8px; padding: 8px 16px calc(8px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); flex: none; }
 .free input { flex: 1; min-width: 0; height: 42px; border: 0; border-radius: 10px; padding: 0 12px; background: var(--bg); font-family: var(--font-tree); font-size: 18px; }
 .go { height: 42px; padding: 0 16px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 600; flex: none; }
 .branching .seg2, .branching .free { display: none; }
@@ -189,11 +193,17 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
   .tray { max-width: 560px; width: 100%; margin: 0 auto; border-radius: 16px 16px 0 0; }
   .sheet { left: 50%; right: auto; width: 560px; margin-left: -280px; }
 }
+@media (max-height: 720px) {
+  .top { padding-top: 6px; padding-bottom: 8px; gap: 4px; }
+  .sent { font-size: 17.5px; }
+  .tool { height: 52px; }
+  .lb { height: 40px; }
+}
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
+
 </head>
 <body>
-
 <div id="app">
   <header class="top">
     <div class="bar">
@@ -210,8 +220,7 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 
   <main class="stage" id="stage">
     <svg id="svg" aria-label="수형도 캔버스"><g id="view"><g id="edges"></g><g id="nodes"></g></g></svg>
-    <div class="float br">
-      <button class="fbtn" id="bundo" aria-label="되돌리기"><svg viewBox="0 0 24 24"><path d="M9 6 4 11l5 5"/><path d="M4 11h10a6 6 0 0 1 0 12h-2"/></svg></button>
+    <div class="float tr" id="floatbr">
       <button class="fbtn" id="bredo" aria-label="다시하기"><svg viewBox="0 0 24 24"><path d="M15 6l5 5-5 5"/><path d="M20 11H10a6 6 0 0 0 0 12h2"/></svg></button>
       <button class="fbtn" id="bfit" aria-label="화면에 맞추기"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
     </div>
@@ -222,8 +231,7 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
 
     <section class="sheet" id="lsheet" hidden aria-label="라벨 고르기">
       <div class="grab"></div>
-      <div class="shead"><h3 id="ltitle">라벨</h3><span class="sub" id="lsub"></span><button class="x" id="lclose" aria-label="닫기">×</button></div>
-      <div class="seg2"><button id="t-cat" aria-pressed="true">범주</button><button id="t-word" aria-pressed="false">단어</button></div>
+      <div class="shead"><h3 id="ltitle">라벨</h3><span class="sub" id="lsub"></span><div class="seg2"><button id="t-cat" aria-pressed="true">범주</button><button id="t-word" aria-pressed="false">단어</button></div><button class="x" id="sundo" aria-label="되돌리기"><svg viewBox="0 0 24 24"><path d="M9 6 4 11l5 5"/><path d="M4 11h10a6 6 0 0 1 0 12h-2"/></svg></button><button class="x" id="lclose" aria-label="닫기">×</button></div>
       <div class="sbody" id="lbody"></div>
       <div class="free"><input id="freein" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done"><button class="go" id="freeok">적용</button></div>
     </section>
@@ -246,9 +254,10 @@ button { cursor: pointer; border: 0; background: none; padding: 0; }
     <button class="tool" id="blabel"><span class="big" id="blabeltxt">?</span><span class="cap">라벨</span></button>
     <button class="tool" id="b1"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2.3"/><path d="M12 7v10"/><circle cx="12" cy="19.5" r="2.3"/></svg><span class="cap">한 가닥</span></button>
     <button class="tool" id="b2"><svg viewBox="0 0 24 24"><circle cx="12" cy="4.5" r="2.3"/><path d="M10.8 6.6 6 17M13.2 6.6 18 17"/><circle cx="5.2" cy="19.5" r="2.3"/><circle cx="18.8" cy="19.5" r="2.3"/></svg><span class="cap">두 가닥</span></button>
-    <button class="tool" id="bwrap"><svg viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="5" rx="1.5" stroke-dasharray="2 2"/><path d="M12 7v5"/><rect x="8" y="12" width="8" height="5" rx="1.5"/><path d="M12 17v4"/></svg><span class="cap">위에 끼우기</span></button>
-    <button class="tool" id="bswap"><svg viewBox="0 0 24 24"><path d="M4 9h15l-4-4M20 15H5l4 4"/></svg><span class="cap">좌우 바꾸기</span></button>
+    <button class="tool" id="bwrap"><svg viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="5" rx="1.5" stroke-dasharray="2 2"/><path d="M12 7v5"/><rect x="8" y="12" width="8" height="5" rx="1.5"/><path d="M12 17v4"/></svg><span class="cap">끼우기</span></button>
+    <button class="tool" id="bswap"><svg viewBox="0 0 24 24"><path d="M4 9h15l-4-4M20 15H5l4 4"/></svg><span class="cap">좌우</span></button>
     <button class="tool" id="bdel"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 7V4h4v3M6.5 7l1 13h9l1-13"/></svg><span class="cap">지우기</span></button>
+    <button class="tool" id="bundo" aria-label="되돌리기"><svg viewBox="0 0 24 24"><path d="M9 6 4 11l5 5"/><path d="M4 11h10a6 6 0 0 1 0 12h-2"/></svg><span class="cap">되돌리기</span></button>
   </nav>
 
   <div class="modal" id="modal" hidden>
